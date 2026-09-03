@@ -109,6 +109,53 @@ describe('notebook filters', () => {
 	});
 });
 
+describe('notebook rows', () => {
+	it('renders the title and description separately, then expands all tags outside the link', async () => {
+		const user = userEvent.setup();
+		const title = 'Load beta production notebook';
+		const description = 'Runs the production load beta workflow from the ARM sandbox base.';
+		const tags = [
+			'stage:production',
+			'visibility:parked',
+			'app:load_beta',
+			'semver:1.0.0',
+			'arm:a',
+		];
+		makeFetch({
+			notebooks: [
+				{
+					...notebook(),
+					title,
+					description,
+					tags,
+				},
+			],
+		});
+		await renderProject();
+
+		const row = await screen.findByTestId('notebook-row');
+		const link = within(row).getByRole('link', { name: title });
+		expect(within(link).getByText(title)).toHaveAttribute('title', title);
+		expect(within(link).getByText(description)).toHaveAttribute('title', description);
+
+		const toggle = within(row).getByRole('button', {
+			name: `Show ${tags.length} tags for ${title}`,
+		});
+		expect(link).not.toContainElement(toggle);
+		expect(toggle).toHaveAttribute('aria-expanded', 'false');
+		expect(within(row).queryByLabelText(`${title} tags`)).not.toBeInTheDocument();
+
+		await user.click(toggle);
+		expect(
+			within(row).getByRole('button', { name: `Hide ${tags.length} tags for ${title}` }),
+		).toHaveAttribute('aria-expanded', 'true');
+		const labels = within(row).getByLabelText(`${title} tags`);
+		for (const tag of tags) {
+			expect(within(labels).getByText(tag)).toBeInTheDocument();
+		}
+	});
+});
+
 describe('deleted notebook tombstones', () => {
 	it('removes live actions and keeps only read-only history and exports', async () => {
 		const user = userEvent.setup();
