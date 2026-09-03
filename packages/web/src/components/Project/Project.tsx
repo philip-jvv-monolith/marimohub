@@ -1,4 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FileTrigger } from 'react-aria-components';
 import { toast } from 'sonner';
@@ -103,6 +104,7 @@ import { formatRelative } from '@/lib/time';
 import { syncUrl } from '@/lib/links';
 import { sessionConnectionHint, sessionsByNotebook } from '@/lib/sessions';
 import { canManageProject } from '@/lib/roles';
+import { cn } from '@/lib/utils';
 import type { DropdownMenuOption } from '@/components/ui';
 import type { NotebookEntry, ResolvedUser, Session } from '@/types';
 
@@ -110,11 +112,113 @@ const WorkspaceBrowserDialog = lazy(
 	() => import('@/components/WorkspaceBrowser/WorkspaceBrowserDialog'),
 );
 
-/** Keep non-active lifecycle state visible even when the notebook has user tags. */
-function notebookBadges(nb: NotebookEntry): string[] {
-	const badges = [...nb.tags];
-	if (nb.status !== 'active' && !badges.includes(nb.status)) badges.push(nb.status);
-	return badges;
+function notebookTags(nb: NotebookEntry): string[] {
+	return nb.tags;
+}
+
+function NotebookStatusChip({ notebook }: { notebook: NotebookEntry }) {
+	if (notebook.status === 'active') return null;
+	return <Chip>{notebook.status}</Chip>;
+}
+
+function NotebookRowSummary({ notebook, meta }: { notebook: NotebookEntry; meta: ReactNode }) {
+	const description = notebook.description?.trim();
+	return (
+		<div className="flex min-w-0 flex-1 flex-col gap-1.5">
+			<div className="flex min-w-0 items-start justify-between gap-4">
+				<div className="flex min-w-0 flex-1 items-center gap-2">
+					<span className="min-w-0 truncate text-sm font-medium" title={notebook.title}>
+						{notebook.title}
+					</span>
+					<NotebookStatusChip notebook={notebook} />
+				</div>
+				{meta}
+			</div>
+			{description && (
+				<p
+					className="line-clamp-2 w-full text-xs leading-5 text-muted-foreground"
+					title={description}
+				>
+					{description}
+				</p>
+			)}
+		</div>
+	);
+}
+
+function NotebookTagsPanel({ notebook, tags }: { notebook: NotebookEntry; tags: string[] }) {
+	const [isOpen, setIsOpen] = useState(false);
+	if (tags.length === 0) return null;
+	const label = `${tags.length} tag${tags.length === 1 ? '' : 's'}`;
+	const panelId = `notebook-tags-${notebook.id}`;
+	return (
+		<div className="flex min-w-0 flex-col items-start gap-2">
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				aria-expanded={isOpen}
+				aria-controls={panelId}
+				aria-label={`${isOpen ? 'Hide' : 'Show'} ${label} for ${notebook.title}`}
+				onPress={() => setIsOpen((open) => !open)}
+				className="-ml-2 h-7 px-2 text-xs text-muted-foreground hover:text-primary"
+			>
+				<ChevronDown
+					className={cn('size-3.5 transition-transform', isOpen && 'rotate-180')}
+					aria-hidden="true"
+				/>
+				{label}
+			</Button>
+			{isOpen && (
+				<div
+					id={panelId}
+					className="flex min-w-0 flex-wrap gap-1.5 rounded-md border border-primary/10 bg-primary/5 p-2"
+					aria-label={`${notebook.title} tags`}
+				>
+					{tags.map((tag) => (
+						<Chip key={tag} className="max-w-full shrink break-all text-left">
+							{tag}
+						</Chip>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function NotebookRowMeta({
+	updatedAt,
+	user,
+	fallbackId,
+	usersLoading,
+	className,
+}: {
+	updatedAt: string;
+	user: ResolvedUser | undefined;
+	fallbackId: string;
+	usersLoading: boolean;
+	className?: string;
+}) {
+	return (
+		<div className={cn('flex min-w-fit shrink-0 items-center gap-3 pt-0.5', className)}>
+			<span className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
+				<span className="text-muted-foreground/70">by</span>
+				<UserLabel
+					user={user}
+					fallbackId={fallbackId}
+					loading={usersLoading}
+					className="max-w-[8rem]"
+				/>
+			</span>
+			<time
+				dateTime={updatedAt}
+				title={new Date(updatedAt).toLocaleString()}
+				className="text-xs tabular-nums text-muted-foreground"
+			>
+				{formatRelative(updatedAt)}
+			</time>
+		</div>
+	);
 }
 
 const MAX_UPLOAD_BYTES = 1_000_000;
@@ -172,49 +276,42 @@ interface DeletedNotebookRowProps {
 }
 
 function DeletedNotebookRow({ notebook, user, usersLoading, onAction }: DeletedNotebookRowProps) {
+	const tags = notebookTags(notebook);
 	return (
 		<div
 			data-testid="notebook-row"
-			className="flex items-center border-b border-l-2 border-l-transparent bg-muted/20 last:border-b-0"
+			className="flex items-start border-b border-l-2 border-l-transparent bg-muted/20 last:border-b-0"
 		>
-			<div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-4 py-3.5">
-				<div className="flex min-w-0 items-center gap-3">
-					<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-						{notebook.source_type === 'git' ? (
-							<GitBranch className="size-4" aria-hidden="true" />
-						) : (
-							<FileText className="size-4" aria-hidden="true" />
-						)}
-					</span>
-					<span className="truncate text-sm font-medium" title={notebook.title}>
-						{notebook.title}
-					</span>
-					{notebookBadges(notebook).map((badge) => (
-						<Chip key={badge} className={badge === 'deleted' ? undefined : 'max-md:hidden'}>
-							{badge}
-						</Chip>
-					))}
-				</div>
-				<div className="flex shrink-0 items-center gap-3">
-					<span className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
-						<span className="text-muted-foreground/70">by</span>
-						<UserLabel
-							user={user}
-							fallbackId={notebook.author}
-							loading={usersLoading}
-							className="max-w-[8rem]"
-						/>
-					</span>
-					<time
-						dateTime={notebook.updated_at}
-						title={new Date(notebook.updated_at).toLocaleString()}
-						className="text-xs tabular-nums text-muted-foreground"
-					>
-						{formatRelative(notebook.updated_at)}
-					</time>
-				</div>
+			<div className="relative flex shrink-0 items-center pl-4 pt-3.5">
+				<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+					{notebook.source_type === 'git' ? (
+						<GitBranch className="size-4" aria-hidden="true" />
+					) : (
+						<FileText className="size-4" aria-hidden="true" />
+					)}
+				</span>
 			</div>
-			<div className="relative flex shrink-0 items-center pr-2">
+			<div className="flex min-w-0 flex-1 flex-col">
+				<div className={cn('flex min-w-0 pl-3 pr-4 py-3.5', tags.length > 0 && 'pb-2')}>
+					<NotebookRowSummary
+						notebook={notebook}
+						meta={
+							<NotebookRowMeta
+								updatedAt={notebook.updated_at}
+								user={user}
+								fallbackId={notebook.author}
+								usersLoading={usersLoading}
+							/>
+						}
+					/>
+				</div>
+				{tags.length > 0 && (
+					<div className="pl-3 pr-4 pb-3">
+						<NotebookTagsPanel notebook={notebook} tags={tags} />
+					</div>
+				)}
+			</div>
+			<div className="relative flex shrink-0 items-center pr-2 pt-3.5">
 				<DropdownMenu
 					label={`Historical actions for ${notebook.title}`}
 					icon={<MoreHorizontal className="size-4" />}
@@ -792,7 +889,7 @@ function useProjectContent() {
 						);
 					}
 
-					const badges = notebookBadges(nb);
+					const tags = notebookTags(nb);
 					const live = sessionByNotebook.get(nb.id);
 					const stoppableEdit = live?.edit?.can?.stop ? live.edit : undefined;
 					return (
@@ -802,7 +899,7 @@ function useProjectContent() {
 							to={`/projects/${pid}/notebooks/${nb.id}`}
 							state={{ title: nb.title }}
 							label={nb.title}
-							contentClassName="items-center justify-between gap-3 py-3.5"
+							contentClassName="flex-col gap-0 py-3.5"
 							leading={
 								nb.source_type === 'git' ? (
 									<GitSourcePopover
@@ -816,7 +913,14 @@ function useProjectContent() {
 											</span>
 										}
 									/>
-								) : undefined
+								) : (
+									<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+										<FileText className="size-4" />
+									</span>
+								)
+							}
+							details={
+								tags.length > 0 ? <NotebookTagsPanel notebook={nb} tags={tags} /> : undefined
 							}
 							actions={
 								<>
@@ -841,62 +945,45 @@ function useProjectContent() {
 								</>
 							}
 						>
-							<div className="flex min-w-0 items-center gap-3">
-								{nb.source_type !== 'git' && (
-									<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
-										<FileText className="size-4" />
-									</span>
-								)}
-								<span className="truncate text-sm font-medium">{nb.title}</span>
-								{badges.map((badge) => (
-									<Chip key={badge} className="max-md:hidden">
-										{badge}
-									</Chip>
-								))}
-							</div>
-							<div className="flex shrink-0 items-center gap-3">
-								{live?.app && (
-									<AppSessionIndicator
-										session={live.app}
-										canControl={!!live.app.can?.stop}
-										canOpen={!!live.app.can?.attach}
-										editActive={!!live.persistentEdit}
-										profiles={computeProfiles}
-										allowComputeOverride={capabilities?.compute_profile_override === 'editors'}
-										selectedProfileName={nb.compute_profile}
-										onStop={() =>
-											appModal.open({ action: 'stop', notebook: nb, session: live.app! })
-										}
-										onRestart={() =>
-											appModal.open({ action: 'restart', notebook: nb, session: live.app! })
-										}
-									/>
-								)}
-								<SessionStatusDot
-									session={live?.edit}
-									loading={sessionsLoading}
-									profiles={computeProfiles}
-									selectedProfileName={
-										canChooseComputeProfile ? nb.compute_profile : computeProfiles[0]?.name
-									}
-								/>
-								<span className="hidden items-center gap-1 text-xs text-muted-foreground sm:flex">
-									<span className="text-muted-foreground/70">by</span>
-									<UserLabel
-										user={users?.[nb.author]}
-										fallbackId={nb.author}
-										loading={usersLoading}
-										className="max-w-[8rem]"
-									/>
-								</span>
-								<time
-									dateTime={nb.updated_at}
-									title={new Date(nb.updated_at).toLocaleString()}
-									className="text-xs tabular-nums text-muted-foreground"
-								>
-									{formatRelative(nb.updated_at)}
-								</time>
-							</div>
+							<NotebookRowSummary
+								notebook={nb}
+								meta={
+									<div className="flex min-w-fit shrink-0 items-center gap-3 pt-0.5">
+										{live?.app && (
+											<AppSessionIndicator
+												session={live.app}
+												canControl={!!live.app.can?.stop}
+												canOpen={!!live.app.can?.attach}
+												editActive={!!live.persistentEdit}
+												profiles={computeProfiles}
+												allowComputeOverride={capabilities?.compute_profile_override === 'editors'}
+												selectedProfileName={nb.compute_profile}
+												onStop={() =>
+													appModal.open({ action: 'stop', notebook: nb, session: live.app! })
+												}
+												onRestart={() =>
+													appModal.open({ action: 'restart', notebook: nb, session: live.app! })
+												}
+											/>
+										)}
+										<SessionStatusDot
+											session={live?.edit}
+											loading={sessionsLoading}
+											profiles={computeProfiles}
+											selectedProfileName={
+												canChooseComputeProfile ? nb.compute_profile : computeProfiles[0]?.name
+											}
+										/>
+										<NotebookRowMeta
+											updatedAt={nb.updated_at}
+											user={users?.[nb.author]}
+											fallbackId={nb.author}
+											usersLoading={usersLoading}
+											className="pt-0"
+										/>
+									</div>
+								}
+							/>
 						</RowLink>
 					);
 				})}

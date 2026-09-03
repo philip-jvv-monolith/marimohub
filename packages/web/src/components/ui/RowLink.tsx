@@ -14,6 +14,8 @@ export interface RowLinkProps {
 	leading?: ReactNode;
 	/** Trailing controls rendered OUTSIDE the anchor (valid HTML — no buttons in `<a>`). */
 	actions?: ReactNode;
+	/** Secondary row content rendered OUTSIDE the anchor for controls or metadata panels. */
+	details?: ReactNode;
 	/** Layout classes for the anchor's content (e.g. `flex-col gap-1` or `justify-between`). */
 	contentClassName?: string;
 	testId?: string;
@@ -32,28 +34,36 @@ export function RowLink({
 	children,
 	leading,
 	actions,
+	details,
 	contentClassName,
 	testId,
 }: RowLinkProps) {
+	const contentPadding = cn('px-4', leading && 'pl-3');
 	return (
 		<div
 			data-testid={testId}
-			className="group relative flex items-center border-b border-l-2 border-l-transparent transition-colors last:border-b-0 hover:border-l-primary hover:bg-accent/60"
+			className="group relative flex items-start border-b border-l-2 border-l-transparent transition-colors last:border-b-0 hover:border-l-primary hover:bg-accent/60"
 		>
-			{leading && <div className="relative flex shrink-0 items-center pl-4">{leading}</div>}
-			<Link
-				to={to}
-				state={state}
-				aria-label={label}
-				className={cn(
-					'flex min-w-0 flex-1 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
-					leading && 'pl-3',
-					contentClassName,
-				)}
-			>
-				{children}
-			</Link>
-			{actions && <div className="relative flex shrink-0 items-center gap-1 pr-2">{actions}</div>}
+			{leading && <div className="relative flex shrink-0 items-center pl-4 pt-3.5">{leading}</div>}
+			<div className="flex min-w-0 flex-1 flex-col">
+				<Link
+					to={to}
+					state={state}
+					aria-label={label}
+					className={cn(
+						'flex min-w-0 py-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+						contentPadding,
+						contentClassName,
+						details && 'pb-2',
+					)}
+				>
+					{children}
+				</Link>
+				{details && <div className={cn(contentPadding, 'pb-3')}>{details}</div>}
+			</div>
+			{actions && (
+				<div className="relative flex shrink-0 items-center gap-1 pr-2 pt-3.5">{actions}</div>
+			)}
 		</div>
 	);
 }

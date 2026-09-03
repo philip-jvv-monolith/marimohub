@@ -30,6 +30,17 @@ describe('RowLink', () => {
 		expect(link).not.toContainElement(action);
 	});
 
+	it('renders details OUTSIDE the anchor for secondary controls', () => {
+		renderRow(
+			<RowLink to="/x" label="Row" details={<button type="button">Toggle details</button>}>
+				<span>content</span>
+			</RowLink>,
+		);
+		const link = screen.getByRole('link', { name: 'Row' });
+		const toggle = screen.getByRole('button', { name: 'Toggle details' });
+		expect(link).not.toContainElement(toggle);
+	});
+
 	it('forwards testId to the row container', () => {
 		renderRow(
 			<RowLink to="/x" testId="my-row">
