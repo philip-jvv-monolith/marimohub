@@ -293,6 +293,7 @@ export async function assertSessionNotebookVisible(
 	const labels = await deps.services.notebooks.getSecurityLabels(
 		project.id,
 		sessionResourceNotebookId(session),
+		{ consistency: 'validated' },
 	);
 	if (options.requireActivePreview !== false)
 		await assertSessionPreviewActive(deps, project.id, session);
@@ -718,7 +719,7 @@ export async function loadSessionProject(
 	subject: AuthSubject,
 	deps: AuthzDeps = {},
 ): Promise<Project> {
-	const project = await projects.getProject(pid);
+	const project = await projects.getProject(pid, { consistency: 'validated' });
 	const action = authorizationService(deps).appReadAction(subject, project);
 	await assertProjectActionOn(project, subject, action, deps);
 	return project;
@@ -1637,7 +1638,12 @@ export const CapabilitiesResponseSchema = z
 		 * clients render from it instead of re-deriving policy from `viewer_mode`.
 		 */
 		viewer_session_modes: z.array(z.enum(SESSION_MODES)),
-		app_pool: z.object({ heartbeat_interval_seconds: z.number().positive() }).optional(),
+		app_pool: z
+			.object({
+				heartbeat_interval_seconds: z.number().positive(),
+				proxy_renewal: z.boolean().optional(),
+			})
+			.optional(),
 		editor_sandbox_sharing: z.enum(EDITOR_SANDBOX_SHARING_VALUES),
 		/**
 		 * Role granted to an authenticated non-member (MARIMOHUB_DEFAULT_ROLE);
